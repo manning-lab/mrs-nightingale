@@ -49,38 +49,32 @@ for(i in 1:ncol(mtx)) mtx[,i] <- inv_norm(mtx[,i])
 
 
 ws <- ws[
+ ][ pvalue < 0.00125
  ][, .(weight_vec = list(   estimate   ),
          name_vec = list(biomarker_name)),
      by=c('age_group','sex','endpoint_type','analysis_method')
  ][, set_nm := paste(age_group,sex,endpoint_type,analysis_method,sep='-')
 ]
 
-mtx <- mtx[,ws$name_vec[[1]]] # Rearrange
-all(sapply(ws$name_vec, identical, colnames(mtx)))
-# Metabolites in same order, ready for matrix * vec multiplication!
-
-# This is the important part right here: |----↓--|
-ws[, score_vec := lapply(weight_vec,\(v) mtx %*% v |> scale())
- ][, score_vec_no_gluc := lapply(weight_vec, \(v) mtx[,-which(colnames(mtx)=='Glucose')] %*% v[-which(name_vec[[1]]=='Glucose')] |> scale())
+# This is the important part right here:                                                                 ↓
+ws[, score_vec                := Map(weight_vec,name_vec, f=\(v,nms) mtx[,nms]                          %*% v                                   )
+ ][, score_vec_scaled         := Map(weight_vec,name_vec, f=\(v,nms) mtx[,nms]                          %*% v                         |> scale())
+ ][, score_vec_no_gluc        := Map(weight_vec,name_vec, f=\(v,nms) mtx[,nms][,-which(nms=='Glucose')] %*% v[-which(nms=='Glucose')]           )
+ ][, score_vec_no_gluc_scaled := Map(weight_vec,name_vec, f=\(v,nms) mtx[,nms][,-which(nms=='Glucose')] %*% v[-which(nms=='Glucose')] |> scale())
 ]
 
 to_write <-
-  as.data.table(ws$score_vec) |>
+  #as.data.table(ws$score_vec) |>
+  #as.data.table(ws$score_vec_scaled) |>
   #as.data.table(ws$score_vec_no_gluc) |>
+  as.data.table(ws$score_vec_no_gluc_scaled) |>
   setnames(ws$set_nm)
 to_write[
   ][, sample_id          := ms$`Sample id`
   ][, biobank_subject_id := ms$`Biobank Subject ID`
 ] |> setcolorder(c('sample_id','biobank_subject_id'))
 
-#fwrite(to_write,'mrs_no_gluc.tsv',sep='\t')
-fwrite(to_write,'mrs.tsv',sep='\t')
-
-
-
-# Sanity check to make sure I know how mtx mult works!
-#mtx[1:10,1:3]*tmp$weight_vec[[1]][1:3]
-#tmp$weight_vec[[1]][1:3]
-#mtx[1:6,1:3]
-#tmp$weight_vec[[1]][1:3]%*%mtx[1:6,1:3]
-#mtx[1:6,1:3] %*% tmp$weight_vec[[1]][1:3]
+fwrite(to_write,'mrs-p0.00125.tsv',               sep='\t')
+fwrite(to_write,'mrs-p0.00125-scaled.tsv',        sep='\t')
+fwrite(to_write,'mrs-p0.00125-no_gluc.tsv',       sep='\t')
+fwrite(to_write,'mrs-p0.00125-no_gluc-scaled.tsv',sep='\t')
